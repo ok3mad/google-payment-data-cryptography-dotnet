@@ -25,15 +25,32 @@ namespace GooglePay.PaymentDataCryptography
     {
         private const string GooglePassesUrl = "https://pay.google.com/gp/m/issuer/keys";
         private const string GoogleSenderId = "GooglePayPasses";
-        private readonly ISignatureKeyProvider _signatureKeyProvider = new GoogleKeyProvider(GooglePassesUrl);
-        private readonly SignatureVerification _signatureVerification = new SignatureVerification();
+        private readonly ISignatureKeyProvider _signatureKeyProvider;
+        private readonly SignatureVerification _signatureVerification;
 
-        public PassCallbackValidator()
+        public PassCallbackValidator() : this((GoogleKeyProviderOptions)null)
         {
+        }
+
+        /// <summary>
+        /// Creates a new validator with the specified options for HTTP customization.
+        /// The key URL is always the Google Passes endpoint.
+        /// </summary>
+        /// <param name="options">Configuration options (Url and IsTest are ignored)</param>
+        public PassCallbackValidator(GoogleKeyProviderOptions options)
+        {
+            _signatureKeyProvider = new GoogleKeyProvider(new GoogleKeyProviderOptions
+            {
+                Url = GooglePassesUrl,
+                CacheDuration = options?.CacheDuration,
+                MessageHandler = options?.MessageHandler
+            });
+            _signatureVerification = new SignatureVerification();
         }
 
         internal PassCallbackValidator(Util.IClock clock)
         {
+            _signatureKeyProvider = new GoogleKeyProvider(new GoogleKeyProviderOptions { Url = GooglePassesUrl });
             _signatureVerification = new SignatureVerification(clock);
         }
 
