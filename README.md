@@ -21,11 +21,54 @@ parser.AddPrivateKey(PrivateKey2);
 string decryptedMessage = parser.Unseal(encryptedMessage);
 ```
 
-### Validate Pass callbacks:
+### Validate Pass callbacks
 ```csharp
 var passCallbackValidator = new PassCallbackValidator();
 var innerMessage = passCallbackValidator.Verify("YOUR_ISSUER_ID", receivedCallbackMessage);
 ```
+
+### Custom HTTP configuration
+
+`GoogleKeyProviderOptions` allows customization of the HTTP client used to fetch
+Google's signing keys. This is useful for custom certificate validation, logging,
+proxies, or any other `HttpMessageHandler`-based configuration.
+
+```csharp
+using GooglePay.PaymentDataCryptography;
+
+// Configure a custom handler (e.g. certificate validation + logging)
+var handler = new HttpClientHandler
+{
+    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+    {
+        // Custom certificate validation logic
+        return true;
+    }
+};
+var loggingHandler = new MyLoggingHandler(handler); // DelegatingHandler
+
+var options = new GoogleKeyProviderOptions
+{
+    MessageHandler = loggingHandler,
+    CacheDuration = TimeSpan.FromHours(1), // Override default 7-day / server-controlled cache
+};
+
+// Use with GoogleKeyProvider
+var keyProvider = new GoogleKeyProvider(options);
+var parser = new PaymentMethodTokenRecipient("merchant:YOUR_MERCHANT_ID", keyProvider);
+
+// Use with PassCallbackValidator (URL/IsTest are ignored — always uses Google Passes endpoint)
+var validator = new PassCallbackValidator(options);
+```
+
+#### GoogleKeyProviderOptions
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `IsTest` | `bool` | `false` | Use Google's test key endpoint instead of production |
+| `Url` | `string` | `null` | Custom key endpoint URL (overrides `IsTest`) |
+| `CacheDuration` | `TimeSpan?` | `null` | Fixed cache TTL (when null, uses server `Cache-Control` max-age or 7 days) |
+| `MessageHandler` | `HttpMessageHandler` | `null` | Custom handler for the underlying `HttpClient` (not disposed by the provider) |
 
 ## Disclaimer
 
