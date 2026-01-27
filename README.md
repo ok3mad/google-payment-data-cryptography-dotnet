@@ -41,8 +41,8 @@ var handler = new HttpClientHandler
 {
     ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
     {
-        // Custom certificate validation logic
-        return true;
+        // Your certificate validation logic here
+        return errors == System.Net.Security.SslPolicyErrors.None;
     }
 };
 var loggingHandler = new MyLoggingHandler(handler); // DelegatingHandler
