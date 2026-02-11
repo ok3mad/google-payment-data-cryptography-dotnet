@@ -36,6 +36,8 @@ namespace GooglePay.PaymentDataCryptography
 
         private readonly Util.IClock _clock = Util.SystemClock.Default;
         private readonly string _url;
+        private readonly HttpClient _httpClient;
+        private readonly bool _cacheDurationFixed;
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
         private Task<KeysDict> _googleKeysTask = null;
         private KeysDict _googleKeys = null;
@@ -44,15 +46,38 @@ namespace GooglePay.PaymentDataCryptography
 
         private readonly string _testData = null;
 
-        public GoogleKeyProvider(bool isTest = false) : this(isTest ? GoogleTestKeyUrl : GoogleProductionKeyUrl)
+        /// <summary>
+        /// Creates a new provider that fetches keys from Google's production or test endpoint.
+        /// </summary>
+        /// <param name="isTest">When true, uses Google's test key endpoint</param>
+        public GoogleKeyProvider(bool isTest = false)
+            : this(new GoogleKeyProviderOptions { IsTest = isTest })
         {
-
         }
 
-        internal GoogleKeyProvider(string url)
-            => _url = url;
+        /// <summary>
+        /// Creates a new provider with the specified options.
+        /// </summary>
+        /// <param name="options">Configuration options</param>
+        public GoogleKeyProvider(GoogleKeyProviderOptions options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
 
-        internal GoogleKeyProvider(string testData, Util.IClock mockClock) {
+            _url = options.Url ?? (options.IsTest ? GoogleTestKeyUrl : GoogleProductionKeyUrl);
+
+            if (options.CacheDuration.HasValue)
+            {
+                _updateTimeSpan = options.CacheDuration.Value;
+                _cacheDurationFixed = true;
+            }
+
+            _httpClient = options.MessageHandler != null
+                ? new HttpClient(options.MessageHandler, disposeHandler: false)
+                : new HttpClient();
+        }
+
+        internal GoogleKeyProvider(string testData, Util.IClock mockClock)
+        {
             _testData = testData;
             _clock = mockClock;
         }
@@ -132,17 +157,16 @@ namespace GooglePay.PaymentDataCryptography
                 return FetchGoogleKeysTest();
             }
 
-            using (var client = new HttpClient())
+            HttpResponseMessage response = await _httpClient.GetAsync(_url).ConfigureAwait(false);
+            if (!_cacheDurationFixed
+                && response.Headers.CacheControl != null
+                && response.Headers.CacheControl.MaxAge.HasValue)
             {
-                HttpResponseMessage response = await client.GetAsync(_url).ConfigureAwait(false);
-                if (response.Headers.CacheControl.MaxAge.HasValue)
-                {
-                    _updateTimeSpan = response.Headers.CacheControl.MaxAge.Value;
-                }
-                Stream json = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                var keys = Util.Json.Parse<GoogleKeysObject>(json);
-                return ParseGoogleKeys(keys);
+                _updateTimeSpan = response.Headers.CacheControl.MaxAge.Value;
             }
+            Stream json = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            var keys = Util.Json.Parse<GoogleKeysObject>(json);
+            return ParseGoogleKeys(keys);
         }
 
         private KeysDict FetchGoogleKeysTest()
